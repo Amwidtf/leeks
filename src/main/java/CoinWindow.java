@@ -5,20 +5,19 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.ui.AnActionButton;
 import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.table.JBTable;
+import handler.CoinRefreshHandler;
+import handler.SinaCoinHandler;
 import org.jetbrains.annotations.NotNull;
-import handler.SinaStockHandler;
-import handler.StockRefreshHandler;
-import handler.TencentStockHandler;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.List;
 
-public class StockWindow {
+public class CoinWindow {
     private JPanel mPanel;
 
-    static StockRefreshHandler handler;
+    static CoinRefreshHandler handler;
 
     static JBTable table;
     static JLabel refreshTimeLabel;
@@ -34,10 +33,10 @@ public class StockWindow {
         table = new JBTable();
     }
 
-    public StockWindow() {
+    public CoinWindow() {
 
         //切换接口
-        handler = factoryHandler();
+        handler = new SinaCoinHandler(table,refreshTimeLabel);
 
         AnActionButton refreshAction = new AnActionButton("停止刷新当前表格数据", AllIcons.Actions.StopRefresh) {
             @Override
@@ -64,48 +63,29 @@ public class StockWindow {
         apply();
     }
 
-    private static StockRefreshHandler factoryHandler(){
-        boolean useSinaApi = PropertiesComponent.getInstance().getBoolean("key_stocks_sina");
-        if (useSinaApi){
-            if (handler instanceof SinaStockHandler){
-                return handler;
-            }
-            if (handler!=null){
-                handler.stopHandle();
-            }
-            return new SinaStockHandler(table, refreshTimeLabel);
-        }
-        if (handler instanceof TencentStockHandler){
-            return handler;
-        }
-        if (handler!=null){
-            handler.stopHandle();
-        }
-        return  new TencentStockHandler(table, refreshTimeLabel);
-    }
+
 
     public static void apply() {
         if (handler != null) {
-            handler = factoryHandler();
             PropertiesComponent instance = PropertiesComponent.getInstance();
             handler.setStriped(instance.getBoolean("key_table_striped"));
-            handler.setThreadSleepTime(instance.getInt("key_stocks_thread_time", handler.getThreadSleepTime()));
+            handler.setThreadSleepTime(instance.getInt("key_coin_thread_time", handler.getThreadSleepTime()));
             handler.refreshColorful(instance.getBoolean("key_colorful"));
             handler.clearRow();
-            handler.setupTable(loadStocks());
-            handler.handle(loadStocks());
+            handler.setupTable(loadCoins());
+            handler.handle(loadCoins());
         }
     }
     public static void refresh() {
         if (handler != null) {
             boolean colorful = PropertiesComponent.getInstance().getBoolean("key_colorful");
             handler.refreshColorful(colorful);
-            handler.handle(loadStocks());
+            handler.handle(loadCoins());
         }
     }
 
-    private static List<String> loadStocks(){
-        return FundWindow.getConfigList("key_stocks", "[,，]");
+    private static List<String> loadCoins(){
+        return FundWindow.getConfigList("key_coins", "[,，]");
     }
 
 }

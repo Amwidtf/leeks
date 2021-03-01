@@ -1,28 +1,32 @@
-package utils;
+package handler;
 
 import com.intellij.ui.JBColor;
 import com.intellij.ui.table.JBTable;
 import org.apache.commons.lang3.StringUtils;
+import bean.StockBean;
+import utils.PinYinUtils;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Vector;
 
-public abstract class FundRefreshHandler extends DefaultTableModel{
-    private static String[] columnNames = {"编码", "基金名称", "估算净值", "估算涨跌", "更新时间", "当日净值"};
+public abstract class StockRefreshHandler extends DefaultTableModel {
+    private static String[] columnNames = new String[]{"编码", "股票名称", "当前价", "涨跌", "涨跌幅", "最高价", "最低价", "更新时间"};
 
     private JTable table;
     private boolean colorful = true;
 
+    /**
+     * 更新数据的间隔时间（秒）
+     */
+    protected volatile int threadSleepTime = 10;
 
-    public FundRefreshHandler(JTable table) {
+    public StockRefreshHandler(JTable table) {
         this.table = table;
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         // Fix tree row height
@@ -44,13 +48,16 @@ public abstract class FundRefreshHandler extends DefaultTableModel{
             setColumnIdentifiers(PinYinUtils.toPinYin(columnNames));
         }
         TableRowSorter<DefaultTableModel> rowSorter = new TableRowSorter<>(this);
-        Comparator<Object> doubleComparator = (o1, o2) -> {
+        Comparator<Object> dobleComparator = (o1, o2) -> {
             Double v1 = Double.parseDouble(StringUtils.remove((String) o1, '%'));
             Double v2 = Double.parseDouble(StringUtils.remove((String) o2, '%'));
             return v1.compareTo(v2);
         };
-        rowSorter.setComparator(2, doubleComparator);
-        rowSorter.setComparator(3, doubleComparator);
+        rowSorter.setComparator(2, dobleComparator);
+        rowSorter.setComparator(3, dobleComparator);
+        rowSorter.setComparator(4, dobleComparator);
+        rowSorter.setComparator(5, dobleComparator);
+        rowSorter.setComparator(6, dobleComparator);
         table.setRowSorter(rowSorter);
         columnColors(colorful);
     }
@@ -63,7 +70,7 @@ public abstract class FundRefreshHandler extends DefaultTableModel{
     public abstract void handle(List<String> code);
 
     /**
-     * 设置表格条纹（斑马线）
+     * 设置表格条纹（斑马线）<br>
      *
      * @param striped true设置条纹
      * @throws RuntimeException 如果table不是{@link JBTable}类型，请自行实现setStriped
@@ -76,13 +83,9 @@ public abstract class FundRefreshHandler extends DefaultTableModel{
         }
     }
 
-    /**
-     * 按照编码顺序初始化，for 每次刷新都乱序，没办法控制显示顺序
-     * @param code
-     */
     public void setupTable(List<String> code){
         for (String s : code) {
-            updateData(new FundBean(s));
+            updateData(new StockBean(s));
         }
     }
 
@@ -97,7 +100,7 @@ public abstract class FundRefreshHandler extends DefaultTableModel{
             public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
                 double temp = 0.0;
                 try {
-                    String s = StringUtils.remove(value.toString(), '%');
+                    String s = value.toString().replace("%","");
                     temp = Double.parseDouble(s);
                 } catch (Exception e) {
 
@@ -121,20 +124,20 @@ public abstract class FundRefreshHandler extends DefaultTableModel{
                 return super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             }
         };
-//        table.getColumn(getColumnName(2)).setCellRenderer(cellRenderer);
         table.getColumn(getColumnName(3)).setCellRenderer(cellRenderer);
+        table.getColumn(getColumnName(4)).setCellRenderer(cellRenderer);
     }
 
-    protected void updateData(FundBean bean) {
-        if (bean.getFundCode() == null){
+    protected void updateData(StockBean bean) {
+        if (bean.getCode() == null){
             return;
         }
         Vector<Object> convertData = convertData(bean);
-        if (convertData==null){
+        if (convertData == null){
             return;
         }
         // 获取行
-        int index = findRowIndex(0, bean.getFundCode());
+        int index = findRowIndex(0, bean.getCode());
         if (index >= 0) {
             updateRow(index, convertData);
         } else {
@@ -184,36 +187,45 @@ public abstract class FundRefreshHandler extends DefaultTableModel{
         return -1;
     }
 
-    private Vector<Object> convertData(FundBean fundBean) {
-        if (fundBean.getFundCode() == null){
+    private Vector<Object> convertData(StockBean fundBean) {
+        if (fundBean == null){
             return null;
         }
-        String timeStr = fundBean.getGztime();
-        if(timeStr == null){
-            timeStr = "--";
+        String timeStr = "--";
+        if (fundBean.getTime()!=null){
+            timeStr = fundBean.getTime().substring(8);
         }
-        String today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
-        if (timeStr.startsWith(today)) {
-            timeStr = timeStr.substring(timeStr.indexOf(" "));
+        String changeStr = "--";
+        String changePercentStr = "--";
+        if (fundBean.getChange()!=null){
+            changeStr= fundBean.getChange().startsWith("-")?fundBean.getChange():"+"+fundBean.getChange();
         }
-        String gszzlStr = "--";
-        String gszzl = fundBean.getGszzl();
-        if (gszzl !=null){
-            gszzlStr= gszzl.startsWith("-")? gszzl :"+"+ gszzl;
+        if (fundBean.getChangePercent()!=null){
+            changePercentStr= fundBean.getChangePercent().startsWith("-")?fundBean.getChangePercent():"+"+fundBean.getChangePercent();
         }
         // 与columnNames中的元素保持一致
         Vector<Object> v = new Vector<Object>(columnNames.length);
-        v.addElement(fundBean.getFundCode());
-        v.addElement(colorful ? fundBean.getFundName() : PinYinUtils.toPinYin(fundBean.getFundName()));
-        v.addElement(fundBean.getGsz());
-        v.addElement( gszzlStr+"%");
+        v.addElement(fundBean.getCode());
+        v.addElement(colorful ? fundBean.getName() : PinYinUtils.toPinYin(fundBean.getName()));
+        v.addElement(fundBean.getNow());
+        v.addElement(changeStr);
+        v.addElement(changePercentStr + "%");
+        v.addElement(fundBean.getMax());
+        v.addElement(fundBean.getMin());
         v.addElement(timeStr);
-        v.addElement(fundBean.getDwjz()+"["+fundBean.getJzrq()+"]");
         return v;
     }
 
     @Override
     public boolean isCellEditable(int row, int column) {
         return false;
+    }
+
+    public int getThreadSleepTime() {
+        return threadSleepTime;
+    }
+
+    public void setThreadSleepTime(int threadSleepTime) {
+        this.threadSleepTime = threadSleepTime;
     }
 }
